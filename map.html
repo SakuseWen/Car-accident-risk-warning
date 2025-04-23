@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>High risk road sections in Chicago // 芝加哥高风险路段</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { margin:0; padding:0; height:100%; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    // 初始化地图并加底图
+    var map = L.map('map').setView([41.8781, -87.6298], 12);
+    L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: '© OpenStreetMap contributors' }
+    ).addTo(map);
+
+    // LayerGroup 用于累加高风险路段
+    var riskGroup = L.layerGroup().addTo(map);
+
+    // 全局缓存：天气描述
+    var currentWeather = '';
+
+    // 根据 Open-Meteo weathercode 返回描述
+    function mapWeatherCode(code) {
+      switch(code) {
+        case 0: return 'Sunny(晴朗)';
+        case 1: case 2: return 'Cloudy(多云)';
+        case 3: return 'Overcast(阴)';
+        case 45: case 48: return 'Foggy(雾)';
+        case 61: case 63: case 65: return 'Light rain(小雨)';
+        case 71: case 73: case 75: return 'Light snow(小雪)';
+        default: return 'Unknow(未知)';
+      }
+    }
+
+    // 异步获取并缓存天气
+    async function loadWeather() {
+      try {
+        let res = await fetch(
+          'https://api.open-meteo.com/v1/forecast' +
+          '?latitude=41.8781&longitude=-87.6298' +
+          '&current_weather=true' +
+          '&timezone=America%2FChicago'
+        );
+        let json = await res.json();
+        currentWeather = mapWeatherCode(json.current_weather.weathercode);
+      } catch (e) {
+        console.error('Weather acquisition failed(天气获取失败)', e);
+        currentWeather = 'Unknow(未知)';
+      }
+    }
+
+    // 加载 GeoJSON 并叠加到 riskGroup
+    async function addRiskyRoads() {
+      // 确保天气已加载
+      if (!currentWeather) {
+        await loadWeather();
+      }
+      try {
+        let res  = await fetch('risky_roads.geojson');
+        let data = await res.json();
+        L.geoJSON(data, {
+          style: () => ({ color: 'red', weight: 5, opacity: 0.7 }),
+          onEachFeature: function(feature, layer) {
+            layer.on('click', function() {
+              let risk = feature.properties.risk;
+              layer.bindPopup(
+                `<b>Risk Level：</b>${risk}<br>` +
+                `<b>Current Weather：</b>${currentWeather}`
+              ).openPopup();
+            });
+          }
+        }).addTo(riskGroup);
+      } catch (e) {
+        console.error('Loading high risk road faile. (加载高风险路段失败)', e);
+      }
+    }
+
+    // 首次渲染
+    addRiskyRoads();
+
+    // 若后端持续更新 risky_roads.geojson，可定时叠加新路段
+    setInterval(addRiskyRoads, 10 * 1000); // 每 10 秒叠加一次
+  </script>
+</body>
+</html>
