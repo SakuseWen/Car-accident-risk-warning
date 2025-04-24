@@ -1,3 +1,8 @@
+#chmod +x bench.sh
+#./bench.sh
+
+
+
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -15,7 +20,7 @@ OLD_BIN="old"
 NEW_BIN="new"
 
 # ——— 基准测试时长（秒） & 报告文件 ———
-DURATION=30
+DURATION=10
 REPORT="bench-report.txt"
 
 # 清空旧报告
@@ -34,30 +39,38 @@ sed -i '' \
   -e 's/analyze_worker/analyzeRisk/g' \
   "$FIXED_SRC"
 
-# ② 编译旧版与新版（修正后）  
+# ② 编译旧版与新版（修正后）
 echo "Compiling $OLD_SRC → $OLD_BIN" | tee -a "$REPORT"
-$CC "$OLD_SRC"  -o "$OLD_BIN"  2>&1 | tee -a "$REPORT"
+$CC "$OLD_SRC" -o "$OLD_BIN" 2>&1 | tee -a "$REPORT"
 
 echo "Compiling $FIXED_SRC → $NEW_BIN" | tee -a "$REPORT"
 $CC "$FIXED_SRC" -o "$NEW_BIN" 2>&1 | tee -a "$REPORT"
 
-# ③ 运行基准测试函数
+# ③ 基准测试函数（用 setsid 启动子进程组，超时后统一杀掉）
 run_bench(){
-  local exe="$1" label="$2"
+  local exe=$1 label=$2
   echo -e "\n### $label" >> "$REPORT"
-  # 记录 wall-time & max RSS
-  /usr/bin/time -f "wall %e s\tmax RSS %M KB" ./$exe \
-    2>&1 | tee -a "$REPORT" &
+
+  # setsid 让程序成为新会话领导者，其所有线程/子进程同属一进程组
+  { /usr/bin/time -l setsid ./$exe; } 2>> "$REPORT" &
   pid=$!
 
-  # 如果有 pidstat，就同时监控 CPU/内存
+  # 如果安装了 pidstat，可同时记录 CPU/内存
   if command -v pidstat &>/dev/null; then
     pidstat -rud -p $pid 1 $DURATION >> "$REPORT" &
     mon=$!
   fi
 
+  # 等待指定时长
   sleep $DURATION
-  kill -INT $pid 2>/dev/null || true
+
+  # 先发 SIGTERM 给整个进程组（负号表示组号）
+  kill -TERM -"$pid" 2>/dev/null || true
+  sleep 1
+  # 再发 SIGKILL 强制结束
+  kill -KILL -"$pid" 2>/dev/null || true
+
+  # 回收子进程
   wait $pid 2>/dev/null || true
 }
 
