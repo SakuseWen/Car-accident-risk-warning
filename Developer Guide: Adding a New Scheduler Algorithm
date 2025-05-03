@@ -1,0 +1,20 @@
+To introduce a new scheduling algorithm into the system, follow these steps:
+1. Create the Scheduling Logic:
+Implement your algorithm as a new function in scheduler.c, e.g., void my_scheduler() {}.
+Your function should determine when to trigger threads like fetchTraffic() and fetchWeather() based on your custom timing or priority logic.
+2. Declare the Scheduler:
+Add the function prototype in scheduler.h so it can be called by other modules.
+3. Integrate into Main Controller:
+In main.c, replace or conditionally call my_scheduler() instead of the default scheduler based on a compile-time macro or runtime flag.
+4. Thread Creation:
+Use pthread_create to manage any new threads spawned by your scheduler.
+Ensure pthread_join or pthread_detach is used appropriately to prevent memory/resource leaks.
+5. Synchronization:
+If your scheduler introduces shared variables or state, protect them using pthread_mutex_t.
+Use pthread_cond_t for efficient waiting/waking logic.
+6. Testing and Benchmarking:
+Validate the new algorithm by logging task execution intervals and comparing performance in bench-report.txt.
+Ensure correctness and fairness (if applicable) across long runs.
+7. Documentation:
+Add comments to describe the purpose and mechanism of your new scheduler.
+Update README.md to reflect the added option and usage instructions
